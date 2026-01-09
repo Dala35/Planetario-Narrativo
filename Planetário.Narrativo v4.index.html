@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="pt-pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CCL - Módulo 06: Planetário Narrativo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;700;800&family=Space+Grotesk:wght@300;500;700&display=swap');
+
+        :root {
+            --star-gold: #fbbf24;
+            --nebula-purple: #6d28d9;
+            --deep-space: #020617;
+            --accent-blue: #38bdf8;
+            --prof-gold: #f59e0b;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--deep-space);
+            color: #f8fafc;
+            overflow: hidden;
+        }
+
+        .heading-font { font-family: 'Space Grotesk', sans-serif; }
+
+        .glass-ui {
+            background: rgba(2, 6, 23, 0.85);
+            backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+
+        #star-canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 0;
+        }
+
+        .audio-wave {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            height: 24px;
+        }
+        .bar {
+            width: 3px;
+            background: var(--star-gold);
+            border-radius: 2px;
+            animation: wave 1.2s infinite ease-in-out;
+        }
+
+        @keyframes wave {
+            0%, 100% { height: 4px; opacity: 0.5; }
+            50% { height: 100%; opacity: 1; }
+        }
+
+        .btn-stellar {
+            background: linear-gradient(135deg, rgba(109, 40, 217, 0.4), rgba(56, 189, 248, 0.2));
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+            backdrop-filter: blur(5px);
+        }
+        .btn-stellar:hover {
+            transform: translateY(-2px);
+            border-color: var(--star-gold);
+            background: linear-gradient(135deg, rgba(109, 40, 217, 0.6), rgba(56, 189, 248, 0.4));
+            box-shadow: 0 0 25px rgba(251, 191, 36, 0.25);
+        }
+
+        .hud-scanline {
+            background: linear-gradient(to bottom, transparent 50%, rgba(56, 189, 248, 0.05) 50.5%);
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+
+        /* MODO PROFESSOR OVERLAY */
+        #professor-overlay {
+            display: none;
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 380px;
+            z-index: 100;
+            animation: slideIn 0.4s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .highlight-prof {
+            box-shadow: 0 0 0 3px var(--prof-gold), 0 0 20px var(--prof-gold);
+            z-index: 50;
+            position: relative;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app" class="h-screen flex flex-col relative hud-scanline">
+        <canvas id="star-canvas"></canvas>
+
+        <!-- MODO PROFESSOR CONTROL -->
+        <div class="fixed bottom-28 right-8 z-50 pointer-events-auto">
+            <button onclick="toggleProfessor()" class="flex items-center gap-3 px-6 py-3 bg-amber-600 rounded-full font-bold text-sm shadow-lg hover:bg-amber-500 transition-all border-2 border-amber-400/50">
+                <i data-lucide="graduation-cap" class="w-5 h-5"></i>
+                <span>MODO PROFESSOR</span>
+            </button>
+        </div>
+
+        <!-- MODO PROFESSOR BOX -->
+        <div id="professor-overlay" class="glass-ui rounded-3xl border-prof-gold p-6 border-l-8 border-amber-500 shadow-2xl">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2 text-amber-500">
+                    <i data-lucide="book-open" class="w-5 h-5"></i>
+                    <span class="text-xs font-black uppercase tracking-widest">Explicação do Módulo 06</span>
+                </div>
+                <button onclick="toggleProfessor()" class="text-slate-500 hover:text-white"><i data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+            <div id="prof-content" class="space-y-4">
+                <h2 id="prof-title" class="text-lg font-bold text-white">Bem-vindo à Tutoria</h2>
+                <p id="prof-text" class="text-sm text-slate-300 leading-relaxed">Clique nos elementos da interface para entender como o céu conecta ciência e cultura.</p>
+                <div class="grid grid-cols-3 gap-2 pt-2">
+                    <button onclick="profNavigate('ancestral')" class="bg-white/5 p-2 rounded text-[9px] uppercase font-bold hover:bg-amber-500/20">Ancestralidade</button>
+                    <button onclick="profNavigate('tecnologia')" class="bg-white/5 p-2 rounded text-[9px] uppercase font-bold hover:bg-sky-500/20">Tecnologia</button>
+                    <button onclick="profNavigate('sideral')" class="bg-white/5 p-2 rounded text-[9px] uppercase font-bold hover:bg-purple-500/20">Tempo Sideral</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="z-10 h-full flex flex-col pointer-events-none">
+            <header class="p-8 flex justify-between items-start pointer-events-auto">
+                <div class="flex gap-6">
+                    <div id="icon-main" class="w-16 h-16 rounded-2xl glass-ui border-b-4 border-amber-500 flex items-center justify-center group cursor-pointer transition-all hover:scale-110">
+                        <i data-lucide="sparkles" class="text-amber-400 w-8 h-8 group-hover:rotate-12 transition-transform"></i>
+                    </div>
+                    <div>
+                        <h1 class="heading-font text-3xl font-black uppercase tracking-tighter">Planetário <span class="text-amber-400">Narrativo</span></h1>
+                        <div class="flex items-center gap-3">
+                            <span class="text-[10px] font-bold uppercase tracking-[0.4em] text-slate-400">Observatório Central • Luanda (8.83° S, 13.23° E)</span>
+                            <div class="flex gap-1">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex gap-4">
+                    <div id="clock-section" class="glass-ui px-6 py-4 rounded-2xl flex items-center gap-4 border-r-4 border-accent-blue transition-all">
+                        <div class="text-right">
+                            <p class="text-[9px] uppercase font-black text-slate-500 tracking-widest">Tempo Sideral Local (LST)</p>
+                            <p id="sideral-time" class="text-lg font-mono font-bold text-amber-400 leading-none">00:00:00</p>
+                        </div>
+                        <i data-lucide="orbit" class="w-5 h-5 text-accent-blue animate-spin-slow"></i>
+                    </div>
+                </div>
+            </header>
+
+            <div class="flex-1 flex justify-between p-8">
+                <!-- Narrativas Orais -->
+                <aside id="aside-ancestral" class="w-80 flex flex-col gap-6 pointer-events-auto transition-all">
+                    <div class="glass-ui p-7 rounded-[2.5rem] space-y-5 border-l-4 border-amber-500 relative overflow-hidden">
+                        <div class="absolute top-0 right-0 p-4 opacity-10">
+                            <i data-lucide="mic-2" class="w-12 h-12"></i>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="languages" class="text-amber-400 w-5 h-5"></i>
+                            <h3 class="text-sm font-black uppercase tracking-widest">Memória Ancestral</h3>
+                        </div>
+                        <p class="text-xs text-slate-400 leading-relaxed">
+                            "O céu é o livro que os nossos avós leram para saber quando plantar e quando navegar."
+                        </p>
+                        
+                        <div class="bg-black/50 rounded-2xl p-4 border border-white/5 space-y-4">
+                            <div class="flex justify-between items-center">
+                                <div class="flex flex-col">
+                                    <span class="text-[10px] font-bold text-amber-500 uppercase tracking-tighter">Kitembu (O Tempo)</span>
+                                    <span class="text-[9px] text-slate-500">Narrativa Oral Kimbundu</span>
+                                </div>
+                                <div class="audio-wave">
+                                    <div class="bar" style="animation-duration: 0.8s"></div>
+                                    <div class="bar" style="animation-duration: 1.2s"></div>
+                                    <div class="bar" style="animation-duration: 0.6s"></div>
+                                    <div class="bar" style="animation-duration: 1.1s"></div>
+                                </div>
+                            </div>
+                            <button id="play-btn" onclick="togglePlay()" class="w-full flex items-center justify-center gap-3 py-3 bg-amber-500 text-slate-950 rounded-xl hover:bg-amber-400 transition-all active:scale-95 shadow-lg shadow-amber-500/10">
+                                <i data-lucide="play" class="w-4 h-4 fill-current"></i>
+                                <span class="text-[10px] font-black uppercase tracking-widest">Ouvir História</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="space-y-3">
+                        <h4 class="text-[10px] font-black text-slate-500 uppercase tracking-widest px-4">Pontos de Ascensão</h4>
+                        <button onclick="focusObject('cruzeiro')" class="w-full glass-ui p-5 rounded-2xl text-left hover:bg-amber-500/10 transition-all group border-l-2 border-transparent hover:border-amber-500">
+                            <div class="flex justify-between items-center">
+                                <span class="text-xs font-bold block group-hover:text-amber-400">O Cruzeiro do Sul</span>
+                                <i data-lucide="chevron-right" class="w-3 h-3 text-slate-600"></i>
+                            </div>
+                            <span class="text-[9px] text-slate-500 uppercase">Alfa Crucis • 321 Anos-luz</span>
+                        </button>
+                        <button onclick="focusObject('pleiades')" class="w-full glass-ui p-5 rounded-2xl text-left hover:bg-amber-500/10 transition-all group border-l-2 border-transparent hover:border-amber-500">
+                            <div class="flex justify-between items-center">
+                                <span class="text-xs font-bold block group-hover:text-amber-400">M45: Sete Estrelo</span>
+                                <i data-lucide="chevron-right" class="w-3 h-3 text-slate-600"></i>
+                            </div>
+                            <span class="text-[9px] text-slate-500 uppercase">Marcador de Colheitas (Plêiades)</span>
+                        </button>
+                    </div>
+                </aside>
+
+                <!-- Área Central -->
+                <div class="flex-1 flex flex-col items-center justify-center gap-12">
+                    <div class="relative w-[500px] h-[500px] flex items-center justify-center pointer-events-none opacity-30">
+                        <div class="absolute inset-0 border-[0.5px] border-amber-500/30 rounded-full animate-spin" style="animation-duration: 40s"></div>
+                        <div class="absolute inset-20 border-[0.5px] border-accent-blue/20 rounded-full animate-spin" style="animation-duration: 60s; animation-direction: reverse;"></div>
+                    </div>
+
+                    <div id="layer-controls" class="pointer-events-auto flex gap-6 mt-[-100px] transition-all">
+                        <button onclick="toggleLayer('myth')" id="myth-layer" class="btn-stellar px-10 py-5 rounded-2xl flex items-center gap-3 group">
+                            <i data-lucide="wand-2" class="w-5 h-5 text-amber-400 group-hover:rotate-45 transition-transform"></i>
+                            <span class="text-xs font-black uppercase tracking-widest">Visão Mitológica</span>
+                        </button>
+                        <button onclick="toggleLayer('grid')" id="grid-layer" class="btn-stellar px-10 py-5 rounded-2xl flex items-center gap-3 group">
+                            <i data-lucide="compass" class="w-5 h-5 text-accent-blue group-hover:scale-110 transition-transform"></i>
+                            <span class="text-xs font-black uppercase tracking-widest">Coordenadas Reais</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Exploração Espacial -->
+                <aside id="aside-tech" class="w-80 flex flex-col gap-6 pointer-events-auto transition-all">
+                    <div class="glass-ui p-7 rounded-[2.5rem] space-y-6 border-r-4 border-accent-blue">
+                        <div class="flex items-center gap-3">
+                            <i data-lucide="satellite" class="w-6 h-6 text-accent-blue animate-pulse"></i>
+                            <h3 class="text-sm font-black uppercase tracking-widest text-white">Monitor ANGOSAT-2</h3>
+                        </div>
+                        
+                        <div class="space-y-4">
+                            <div class="p-5 bg-black/60 rounded-2xl border border-white/5">
+                                <div class="flex justify-between text-[8px] uppercase font-bold text-slate-500 mb-2">
+                                    <span>Transponder Link</span>
+                                    <span class="text-emerald-500">Ativo</span>
+                                </div>
+                                <div class="flex items-baseline gap-2">
+                                    <span class="text-2xl font-mono font-bold text-accent-blue tracking-tighter">13°E</span>
+                                    <span class="text-[9px] text-slate-400 uppercase">Posição GEO</span>
+                                </div>
+                            </div>
+
+                            <button onclick="launchSonda()" class="group w-full py-5 bg-accent-blue text-slate-950 font-black uppercase text-[10px] tracking-widest rounded-2xl hover:bg-white transition-all shadow-xl shadow-accent-blue/20 flex items-center justify-center gap-3">
+                                <i data-lucide="rocket" class="w-4 h-4 group-hover:-translate-y-1 transition-transform"></i>
+                                Lançar Sonda Digital
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="mt-auto glass-ui p-7 rounded-[2.5rem] border-t-4 border-amber-500 transition-all duration-500" id="info-container">
+                        <div id="info-box">
+                            <h4 class="text-xs font-bold text-white mb-2 uppercase tracking-tight">Alpha Centauri</h4>
+                            <p class="text-[10px] text-slate-400 leading-relaxed italic">O sistema estelar mais próximo do Sol. No hemisfério sul, serve como 'ponteiro' para o Cruzeiro.</p>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+
+            <footer class="h-24 glass-ui border-t border-white/10 flex items-center justify-between px-12 pointer-events-auto">
+                <div class="flex gap-12">
+                    <div id="coords-section" class="flex gap-12 transition-all">
+                        <div class="flex flex-col">
+                            <span class="text-[9px] font-black text-slate-500 uppercase mb-1 tracking-widest">Ascensão Reta (RA)</span>
+                            <span id="ra-val" class="text-sm font-mono font-bold text-amber-100">14h 39m 36s</span>
+                        </div>
+                        <div class="flex flex-col">
+                            <span class="text-[9px] font-black text-slate-500 uppercase mb-1 tracking-widest">Declinação (DEC)</span>
+                            <span id="dec-val" class="text-sm font-mono font-bold text-amber-100">-60° 50' 02"</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-8">
+                    <div class="h-10 w-[1px] bg-white/10 hidden md:block"></div>
+                    <p class="text-[10px] font-medium text-slate-500 italic max-w-sm text-right leading-relaxed">
+                        "As estrelas são as fogueiras que os nossos antepassados deixaram acesas para não nos perdermos no tempo."
+                    </p>
+                </div>
+            </footer>
+        </div>
+    </div>
+
+    <script>
+        let scene, camera, renderer, stars, nebula;
+        const canvas = document.getElementById('star-canvas');
+        let isPlaying = false;
+        let professorActive = false;
+
+        function initPlanetarium() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 3000);
+            renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            const starGeometry = new THREE.BufferGeometry();
+            const starVertices = [];
+            const starColors = [];
+            
+            for (let i = 0; i < 20000; i++) {
+                const x = (Math.random() - 0.5) * 2000;
+                const y = (Math.random() - 0.5) * 2000;
+                const z = (Math.random() - 0.5) * 2000;
+                starVertices.push(x, y, z);
+                const r = 0.8 + Math.random() * 0.2;
+                const g = 0.8 + Math.random() * 0.2;
+                const b = 0.9 + Math.random() * 0.1;
+                starColors.push(r, g, b);
+            }
+
+            starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+            starGeometry.setAttribute('color', new THREE.Float32BufferAttribute(starColors, 3));
+            const starMaterial = new THREE.PointsMaterial({ size: 1.2, vertexColors: true, transparent: true, opacity: 0.9, sizeAttenuation: true });
+            stars = new THREE.Points(starGeometry, starMaterial);
+            scene.add(stars);
+
+            const nebulaGeo = new THREE.SphereGeometry(600, 32, 32);
+            const nebulaMat = new THREE.MeshBasicMaterial({ color: 0x6d28d9, side: THREE.BackSide, transparent: true, opacity: 0.08 });
+            nebula = new THREE.Mesh(nebulaGeo, nebulaMat);
+            scene.add(nebula);
+
+            camera.position.z = 5;
+            animate();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            stars.rotation.y += 0.00015;
+            stars.rotation.x += 0.00005;
+            nebula.rotation.y += 0.00008;
+            renderer.render(scene, camera);
+        }
+
+        // --- MODO PROFESSOR LOGIC ---
+        const profData = {
+            intro: { title: "Objetivo do Módulo 06", text: "Este módulo ensina a 'Etnoastronomia'. O objetivo é mostrar que a ciência moderna (Angosat) e a sabedoria ancestral africana são duas formas válidas de ler o cosmos." },
+            ancestral: { target: "aside-ancestral", title: "Memória Ancestral", text: "Aqui exploramos as 'Oralidades'. As estrelas como as Plêiades (Sete Estrelo) não são apenas gases, mas marcadores de colheita na tradição angolana." },
+            tecnologia: { target: "aside-tech", title: "Monitor ANGOSAT-2", text: "O Angosat-2 a 13°E representa a soberania tecnológica. Ele usa as mesmas estrelas que os nossos ancestrais usavam para navegação, mas agora para telecomunicações." },
+            sideral: { target: "clock-section", title: "Tempo Sideral", text: "Diferente do tempo solar de 24h, o tempo sideral baseia-se na rotação da Terra em relação às estrelas fixas. É o 'relógio' dos astrónomos." },
+            layers: { target: "layer-controls", title: "Camadas de Visão", text: "O aluno pode alternar entre 'Mito' e 'Grelha'. Isso ensina que o céu pode ser lido subjetivamente (histórias) ou objetivamente (coordenadas)." }
+        };
+
+        function toggleProfessor() {
+            const overlay = document.getElementById('professor-overlay');
+            professorActive = !professorActive;
+            overlay.style.display = professorActive ? 'block' : 'none';
+            if(!professorActive) clearHighlights();
+            else profNavigate('intro');
+        }
+
+        function profNavigate(key) {
+            const data = profData[key];
+            document.getElementById('prof-title').innerText = data.title;
+            document.getElementById('prof-text').innerText = data.text;
+            
+            clearHighlights();
+            if(data.target) {
+                document.getElementById(data.target).classList.add('highlight-prof');
+                document.getElementById(data.target).scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+
+        function clearHighlights() {
+            document.querySelectorAll('.highlight-prof').forEach(el => el.classList.remove('highlight-prof'));
+        }
+
+        // --- INTERACTION LOGIC ---
+        function focusObject(id) {
+            const data = {
+                cruzeiro: { title: "Cruzeiro do Sul (Crux)", desc: "Bússola do sul. Essencial para o cálculo da latitude.", ra: "12h 45m", dec: "-63° 06'" },
+                pleiades: { title: "M45: Sete Estrelo", desc: "Para os povos de Angola, marca o 'Tempo da Água'.", ra: "03h 47m", dec: "+24° 07'" }
+            };
+            const info = data[id];
+            const container = document.getElementById('info-container');
+            const box = document.getElementById('info-box');
+            container.style.opacity = "0";
+            setTimeout(() => {
+                box.innerHTML = `<h4 class="text-xs font-bold text-white mb-2 uppercase tracking-tight">${info.title}</h4><p class="text-[10px] text-slate-400 leading-relaxed italic">${info.desc}</p>`;
+                document.getElementById('ra-val').innerText = info.ra;
+                document.getElementById('dec-val').innerText = info.dec;
+                container.style.opacity = "1";
+            }, 300);
+            stars.rotation.y += 0.2;
+        }
+
+        function toggleLayer(layer) {
+            const el = document.getElementById(layer + '-layer');
+            el.classList.toggle('bg-amber-500/20');
+            if(professorActive) profNavigate('layers');
+        }
+
+        function togglePlay() {
+            isPlaying = !isPlaying;
+            document.getElementById('play-btn').innerHTML = isPlaying ? `<i data-lucide="pause" class="w-4 h-4 fill-current"></i><span class="text-[10px] font-black uppercase tracking-widest">Pausar Relato</span>` : `<i data-lucide="play" class="w-4 h-4 fill-current"></i><span class="text-[10px] font-black uppercase tracking-widest">Ouvir História</span>`;
+            lucide.createIcons();
+            if(professorActive && isPlaying) profNavigate('ancestral');
+        }
+
+        function launchSonda() {
+            const btn = event.currentTarget;
+            btn.innerHTML = `CALCULANDO...`;
+            if(professorActive) profNavigate('tecnologia');
+            setTimeout(() => {
+                btn.innerHTML = `<i data-lucide="check" class="w-4 h-4"></i> SONDA EM ÓRBITA`;
+                lucide.createIcons();
+                setTimeout(() => { btn.innerHTML = `<i data-lucide="rocket" class="w-4 h-4"></i> Lançar Sonda Digital`; lucide.createIcons(); }, 3000);
+            }, 2000);
+        }
+
+        function updateSideral() {
+            const now = new Date();
+            document.getElementById('sideral-time').innerText = now.toTimeString().split(' ')[0];
+        }
+        
+        setInterval(updateSideral, 1000);
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        window.onload = () => {
+            lucide.createIcons();
+            initPlanetarium();
+            updateSideral();
+        };
+    </script>
+</body>
+</html>
